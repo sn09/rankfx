@@ -24,6 +24,6 @@ jobs:
           path: ./.venv
           key: venv-${{ hashFiles('poetry.lock') }}
       - name: Install the project dependencies
-        run: poetry install --without test
+        run: poetry install --no-root --without test
       - name: Check with ruff
         run: poetry run ruff --output-format=github --config ./pyproject.toml .
