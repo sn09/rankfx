@@ -26,4 +26,4 @@ jobs:
       - name: Install the project dependencies
         run: poetry install --no-root --without test
       - name: Check with ruff
-        run: poetry run ruff --output-format=github --config ./pyproject.toml .
+        run: poetry run ruff check --output-format=github --config ./pyproject.toml .
