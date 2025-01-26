@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    - id: check-added-large-files
+    - id: check-ast
+    - id: check-merge-conflict
+    - id: check-toml
+    - id: check-yaml
+    - id: end-of-file-fixer
+    - id: detect-aws-credentials
+    - id: detect-private-key
+    - id: pretty-format-json
+    - id: requirements-txt-fixer
+    - id: trailing-whitespace
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: ruff
+        types_or: [python, pyi]
+        args: [--fix, --exit-non-zero-on-fi]

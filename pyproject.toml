@@ -1,0 +1,54 @@
+[project]
+name = "ranking"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Saraev Nikita"}
+]
+license = {text = "Apache"}
+readme = "README.md"
+requires-python = ">=3.10"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry.dependencies]
+python = ">=3.10,<=3.13"
+torch = "^2.2.1"
+
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.4"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+pre-commit = "^4.1.0"
+ruff = "^0.9.3"
+
+
+[tool.ruff]
+line-length = 120
+extend-select = [
+    "E501",
+    "UP",  # pyupgrade
+    "D",   # pydocstyle
+    "I",   # isort
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
