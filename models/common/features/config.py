@@ -6,11 +6,13 @@ from collections.abc import Sequence
 from dataclasses import field
 
 from pydantic import model_validator
+from pydantic.dataclasses import dataclass
 
 from common.base.config import BaseConfig
 from common.features.types import FeatureType
 
 
+@dataclass
 class Feature(BaseConfig):
     """Config for single feature."""
     name: str
@@ -31,6 +33,7 @@ class Feature(BaseConfig):
         return self
 
 
+@dataclass
 class FeaturesConfig(BaseConfig):
     """Config for model features."""
     features: Sequence[Feature] | None = field(default=None)

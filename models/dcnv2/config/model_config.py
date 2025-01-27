@@ -1,9 +1,10 @@
 """Module with DCNv2 model config implementation."""
 
 import enum
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import field
 
+from pydantic.dataclasses import dataclass
 from torch import nn
 
 from common.base.config import BaseConfig
@@ -18,6 +19,7 @@ class ModelStructure(enum.Enum):
     STACKED_PARALLEL = "stacked_parallel"
 
 
+@dataclass
 class DCNv2Config(BaseConfig):
     """DCNv2 config implementation."""
 
@@ -34,14 +36,14 @@ class DCNv2Config(BaseConfig):
     # Parallel DNN parameters
     parallel_hidden_dims: Sequence[int] | None = field(default=None)
     parallel_dropout: float = field(default=0.)
-    parallel_use_batch_norm = field(default=True)
-    parallel_activation = field(default=nn.ReLU)
+    parallel_use_batch_norm: bool = field(default=True)
+    parallel_activation: Callable = field(default=nn.ReLU)
 
     # Stacked DNN parameters
     stacked_hidden_dims: Sequence[int] | None = field(default=None)
     stacked_dropout: float = field(default=0.)
-    stacked_use_batch_norm = field(default=True)
-    stacked_activation = field(default=nn.ReLU)
+    stacked_use_batch_norm: bool = field(default=True)
+    stacked_activation: Callable = field(default=nn.ReLU)
 
     def get_backbone_output_dim(self, input_dim: int | None = None) -> int:
         """Get output dim after CrossNet + DNN steps."""

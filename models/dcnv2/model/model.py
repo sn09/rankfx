@@ -45,7 +45,7 @@ class DCNv2(nn.Module):
                 hidden_dims=model_config.stacked_hidden_dims,
                 activation_fn=model_config.stacked_activation,
                 dropout=model_config.stacked_dropout,
-                batch_norm=model_config.stacked_use_batch_norm,
+                use_batch_norm=model_config.stacked_use_batch_norm,
             )
 
         if model_config.model_structure in (ModelStructure.PARALLEL, ModelStructure.STACKED_PARALLEL):
@@ -54,7 +54,7 @@ class DCNv2(nn.Module):
                 hidden_dims=model_config.parallel_hidden_dims,
                 activation_fn=model_config.parallel_activation,
                 dropout=model_config.parallel_dropout,
-                batch_norm=model_config.parallel_use_batch_norm,
+                use_batch_norm=model_config.parallel_use_batch_norm,
             )
 
         final_dim = model_config.get_backbone_output_dim(input_dim=input_dim)

@@ -65,12 +65,18 @@ class EmbeddingLayer(nn.Module):
             feature_value = (
                 input_[feature]
                 if self.is_dict_input
-                else input[:, current_idx:current_idx + feature.feature_size]
+                else input_[:, current_idx:current_idx + feature.feature_size]
             )
+            if feature.feature_type == FeatureType.CATEGORICAL:
+                feature_value = feature_value.long()
+                if feature.needs_embed:
+                    feature_value = feature_value.squeeze()
+
             if feature.name in self.embedding_modules:
                 output = self.embedding_modules[feature.name](feature_value)
             else:
                 output = self.dummy_fn(feature_value)
+
             outputs.append(output)
 
         if self.flatten_emb:
