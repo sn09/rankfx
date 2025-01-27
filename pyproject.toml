@@ -18,6 +18,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.dependencies]
 python = ">=3.10,<=3.13"
 torch = "^2.2.1"
+pydantic = "^2.10.6"
 
 
 [tool.poetry.group.test.dependencies]
@@ -43,6 +44,9 @@ extend-select = [
     "C",  # flake8-comprehensions
     "B",  # flake8-bugbear
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["common", "dcnv2"]
 
 
 [tool.ruff.pydocstyle]
