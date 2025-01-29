@@ -39,7 +39,16 @@ class FeaturesConfig(BaseConfig):
     features: Sequence[Feature] | None = field(default=None)
 
     @property
-    def num_features(self) -> int:
+    def num_initial_features(self) -> int:
+        """Get final number of features."""
+        size_ = 0
+        for feature in self.features:
+            size_ += feature.feature_size
+
+        return size_
+
+    @property
+    def num_final_features(self) -> int:
         """Get final number of features."""
         size_ = 0
         for feature in self.features:

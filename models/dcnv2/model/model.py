@@ -27,7 +27,7 @@ class DCNv2(nn.Module):
         self.features_config = features_config
 
         self.embedding_layer = EmbeddingLayer(features_config=features_config, is_dict_input=is_dict_input)
-        input_dim = features_config.num_features
+        input_dim = features_config.num_final_features
 
         if model_config.use_low_rank_mixture:
             self.crossnet = CrossNetMix(

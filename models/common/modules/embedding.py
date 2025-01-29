@@ -54,9 +54,9 @@ class EmbeddingLayer(nn.Module):
         Returns:
             Tensor after EmbeddingLayer applying
         """
-        if not self.is_dict_input and self.config.num_features != input_.size(-1):
+        if not self.is_dict_input and self.config.num_initial_features != input_.size(-1):
             raise RuntimeError(
-                f"Number of features in config ({self.config.num_features})"
+                f"Number of features in config ({self.config.num_initial_features})"
                 f"and in input tensor ({input_.size(-1)}) are not equal"
             )
         outputs = []
