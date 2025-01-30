@@ -77,6 +77,7 @@ class EmbeddingLayer(nn.Module):
             else:
                 output = self.dummy_fn(feature_value)
 
+            current_idx += feature.feature_size
             outputs.append(output)
 
         if self.flatten_emb:
