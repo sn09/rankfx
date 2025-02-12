@@ -105,7 +105,7 @@ class DCNv2(NNPandasModel):
             target = batch["target"]
 
         logits = self.forward(batch).squeeze()
-        loss = self.loss_fn(logits, target)
+        loss = self.loss_fn(logits, target.float())
 
         return {"loss": loss}
 
@@ -124,7 +124,8 @@ class DCNv2(NNPandasModel):
             target = batch["target"]
 
         logits = self.forward(batch).squeeze()
-        probs = torch.sigmoid(logits)
+        probs = torch.sigmoid(logits).detach().cpu().numpy()
+        target = target.detach().cpu().numpy()
 
         roc_auc = roc_auc_score(target, probs)
         logloss = log_loss(target, probs)
@@ -146,7 +147,8 @@ class DCNv2(NNPandasModel):
             target = batch["target"]
 
         logits = self.forward(batch).squeeze()
-        probs = torch.sigmoid(logits)
+        probs = torch.sigmoid(logits).detach().cpu().numpy()
+        target = target.detach().cpu().numpy()
 
         roc_auc = roc_auc_score(target, probs)
         logloss = log_loss(target, probs)

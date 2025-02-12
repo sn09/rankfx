@@ -149,8 +149,13 @@ class NNPandasModel(ABC, nn.Module):
         """
         if isinstance(batch, torch.Tensor):
             return batch.to(device)
-        for key in batch:
-            batch[key] = batch[key].to(device)
+
+        if isinstance(batch, dict):
+            for key in batch:
+                batch[key] = batch[key].to(device)
+        else:
+            for idx in range(len(batch)):
+                batch[idx] = batch[idx].to(device)
         return batch
 
     def _clear_resources(self) -> None:
