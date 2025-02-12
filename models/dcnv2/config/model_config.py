@@ -7,7 +7,7 @@ from dataclasses import field
 from pydantic.dataclasses import dataclass
 from torch import nn
 
-from common.base.config import BaseConfig
+from models.common.base.config.base_config import BaseConfig
 
 
 @enum.unique
