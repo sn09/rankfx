@@ -14,10 +14,10 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from models.common.base.config.training_config import TrainingConfig
-from models.common.features.datasets import PandasDataset
-from models.common.utils.logging_utils import get_logger
-from models.common.utils.training_utils import seed_everything
+from common.base.config.training_config import TrainingConfig
+from common.features.datasets import PandasDataset
+from common.utils.logging_utils import get_logger
+from common.utils.training_utils import seed_everything
 
 LOGGER = get_logger(__name__)
 
@@ -190,7 +190,7 @@ class NNPandasModel(ABC, nn.Module):
         batch: dict[str, torch.Tensor] | torch.Tensor,
         phase: ModelPhase,
     ) -> Any:
-        """Run model step depending on current phae.
+        """Run model step depending on current phase.
 
         Args:
             batch: batch of data
@@ -320,7 +320,7 @@ class NNPandasModel(ABC, nn.Module):
             features: features to train
             target: target to train
             config: training config instance
-            optimizer: model optimizer
+            optimizer: model optimizer, default is Adam
             scheduler: model scheduler
             val_features: features for validation, if None dont validate
             val_target: target for validation

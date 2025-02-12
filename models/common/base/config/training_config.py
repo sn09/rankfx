@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic.dataclasses import dataclass
 
-from models.common.base.config.base_config import BaseConfig
+from common.base.config.base_config import BaseConfig
 
 
 @dataclass
@@ -23,7 +23,7 @@ class TrainingConfig(BaseConfig):
     # training params
     num_epochs: int = field(default=10)
 
-    grad_clip_threshold: float = field(default=5.)
+    grad_clip_threshold: float = field(default=10.)
 
     seed: int = field(default=42)
     device: str = field(default="cpu")

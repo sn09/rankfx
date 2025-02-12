@@ -3,11 +3,12 @@
 import enum
 from collections.abc import Callable, Sequence
 from dataclasses import field
+from typing import Any
 
 from pydantic.dataclasses import dataclass
 from torch import nn
 
-from models.common.base.config.base_config import BaseConfig
+from common.base.config.base_config import BaseConfig
 
 
 @enum.unique
@@ -26,6 +27,9 @@ class DCNv2Config(BaseConfig):
     model_structure: ModelStructure = field(default=ModelStructure.STACKED)
 
     output_dim: int = field(default=1)
+
+    loss_fn: str = field(default="torch.nn.BCEWithLogitsLoss")
+    loss_params: dict[str, Any] = field(default_factory=lambda: {})
 
     # CrossNet parameters
     use_low_rank_mixture: bool = field(default=True)

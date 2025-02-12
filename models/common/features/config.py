@@ -8,8 +8,8 @@ from dataclasses import field
 from pydantic import model_validator
 from pydantic.dataclasses import dataclass
 
+from common.base.config.base_config import BaseConfig
 from common.features.types import FeatureType
-from models.common.base.config.base_config import BaseConfig
 
 
 @dataclass
