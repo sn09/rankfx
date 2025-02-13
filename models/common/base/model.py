@@ -2,6 +2,8 @@
 
 import enum
 import gc
+import os
+import pathlib
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
@@ -334,6 +336,10 @@ class NNPandasModel(ABC, nn.Module):
             Output metrics from train and validation steps
         """
         seed_everything(config.seed)
+        LOGGER.info("Artifacts path is %s", pathlib.Path(config.artifacts_path).resolve())
+        if not os.path.isdir(config.artifacts_path):
+            LOGGER.info("Creating artifacts path")
+            os.makedirs(config.artifacts_path)
 
         self = self.to(config.device)
         optimizer = optimizer or torch.optim.Adam(self.parameters())
@@ -455,11 +461,5 @@ class NNPandasModel(ABC, nn.Module):
             target=None,
             shuffle=False,
         )
-        inference_output = self._run_inference_epoch(
-            dataloader,
-            epoch_num=-1,
-            phase=ModelPhase.INFERENCE,
-            optimizer=None,
-            config=config,
-        )
+        inference_output = self._run_inference_epoch(dataloader, config=config)
         return inference_output.detach().cpu().numpy()
