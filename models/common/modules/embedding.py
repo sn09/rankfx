@@ -10,11 +10,12 @@ from common.features.types import FeatureType
 class EmbeddingLayer(nn.Module):
     """Embedding Layer implementation."""
     def __init__(
-            self,
-            features_config: FeaturesConfig,
-            is_dict_input: bool = True,
-            flatten_emb: bool = True,
-        ):
+        self,
+        features_config: FeaturesConfig,
+        is_dict_input: bool = True,
+        flatten_emb: bool = True,
+        proj_output_features: bool = False,
+    ):
         """Instantiate EmbeddingLayer module.
 
         Features are taken in the order, specified in features_config.features
@@ -24,11 +25,13 @@ class EmbeddingLayer(nn.Module):
             features_config: features config instance
             is_dict_input: is input looks like {feature_name: feature_tensor} or just simple tensor
             flatten_emb: do flatten embeddings output into single vector, or try to stack by features
+            proj_output_features: apply projection to output concatted embeddings
         """
         super().__init__()
         self.config = features_config
         self.is_dict_input = is_dict_input
         self.flatten_emb = flatten_emb
+        self.proj_output_features = proj_output_features
 
         modules = {}
         for feature in features_config.features:
@@ -40,7 +43,22 @@ class EmbeddingLayer(nn.Module):
                         padding_idx=feature.embedding_padding_idx,
                     )
                     continue
+
+                if feature.feature_type == FeatureType.CATEGORICAL_SEQUENCE:
+                    modules[feature.name] = nn.EmbeddingBag(
+                        feature.embedding_vocab_size,
+                        feature.embedding_size,
+                        padding_idx=feature.embedding_padding_idx,
+                    )
+                    continue
+
                 modules[feature.name] = nn.Linear(feature.feature_size, feature.embedding_size, bias=False)
+
+        self.output_proj = nn.Linear(
+            in_features=features_config.num_final_features,
+            out_features=features_config.num_final_features,
+            bias=False,
+        ) if proj_output_features else nn.Identity()
 
         self.embedding_modules = nn.ModuleDict(modules)
         self.dummy_fn = nn.Identity()
@@ -59,18 +77,26 @@ class EmbeddingLayer(nn.Module):
                 f"Number of features in config ({self.config.num_initial_features})"
                 f"and in input tensor ({input_.size(-1)}) are not equal"
             )
+
         outputs = []
         current_idx = 0
         for feature in self.config.features:
             feature_value = (
-                input_[feature]
+                input_[feature.name]
                 if self.is_dict_input
                 else input_[:, current_idx:current_idx + feature.feature_size]
             )
-            if feature.feature_type == FeatureType.CATEGORICAL:
+            if feature.feature_type in [FeatureType.CATEGORICAL, FeatureType.CATEGORICAL_SEQUENCE]:
                 feature_value = feature_value.long()
                 if feature.needs_embed:
                     feature_value = feature_value.squeeze()
+                elif feature.feature_size == 1:
+                    feature_value = feature_value.unsqueeze(1)
+
+            if feature.feature_type in [FeatureType.NUMERICAL, FeatureType.NUMERICAL_SEQUENCE]:
+                feature_value = feature_value.type(torch.float32)
+                if feature.feature_size == 1:
+                    feature_value = feature_value.unsqueeze(1)
 
             if feature.name in self.embedding_modules:
                 output = self.embedding_modules[feature.name](feature_value)
@@ -82,7 +108,7 @@ class EmbeddingLayer(nn.Module):
 
         if self.flatten_emb:
             # (batch_size, concat_features_len)
-            return torch.cat(outputs, dim=-1)
+            return self.output_proj(torch.cat(outputs, dim=-1))
 
         # (batch_size, feature_num, feature_len) - features should be the same size
         return torch.stack(outputs, dim=1)

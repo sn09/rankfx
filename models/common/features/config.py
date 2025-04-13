@@ -28,7 +28,10 @@ class Feature(BaseConfig):
     @model_validator(mode="after")
     def check_feature_size(self) -> Feature:
         """Validate feature size."""
-        if self.feature_type != FeatureType.SEQUENTIAL and self.feature_size > 1:
+        if (
+            self.feature_size > 1
+            and self.feature_type not in [FeatureType.NUMERICAL_SEQUENCE, FeatureType.CATEGORICAL_SEQUENCE]
+        ):
             raise ValueError(f"Feature size cannot be > 1 for scalar feature types, got {self.feature_size}")
         return self
 

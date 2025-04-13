@@ -5,18 +5,20 @@ import gc
 import os
 import pathlib
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import torch
+from pandas.api.types import is_float_dtype, is_list_like, is_numeric_dtype
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from common.base.config.training_config import TrainingConfig
+from common.features.config import Feature, FeaturesConfig, FeatureType
 from common.features.datasets import PandasDataset
 from common.utils.logging_utils import get_logger
 from common.utils.training_utils import seed_everything
@@ -35,9 +37,23 @@ class ModelPhase(enum.Enum):
 
 class NNPandasModel(ABC, nn.Module):
     """Base model class."""
-    def __init__(self):
-        """Instantiate model class."""
+    def __init__(
+        self,
+        optimizer: Optimizer | None = None,
+        scheduler: LRScheduler | None = None,
+        infer_feature_config: bool = True,
+    ):
+        """Instantiate model class.
+
+        Args:
+            optimizer: optimizer instance
+            scheduler: learning rate scheduler instance
+            infer_feature_config: infer features config from input pandas dataframe
+        """
         super().__init__()
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.infer_feature_config = infer_feature_config
 
     @abstractmethod
     def forward(self, input_: dict[str, torch.Tensor] | torch.Tensor) -> torch.Tensor:
@@ -101,21 +117,136 @@ class NNPandasModel(ABC, nn.Module):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def _init_modules(self, features_config: FeaturesConfig) -> None:
+        """Instantiate model modules based on features config.
+
+        Args:
+            features_config: features config
+        """
+        raise NotImplementedError
+
+    def _calculate_uniq_categories(self, series: pd.Series, list_like: bool = False) -> int:
+        """Calculate number of unique categories in column.
+
+        Args:
+            series: pandas series
+            list_like: is series consists of sequences
+
+        Returns:
+            Number of unique categories
+        """
+        uniq_categories = series.nunique() if not list_like else series.explode().nunique()
+        if series.min() != 0 and series.max() != uniq_categories - 1:
+            LOGGER.warning(
+                "Number of unique `%s` values is %s, but feature is in interval [%s, %s]",
+                series.name,
+                uniq_categories,
+                series.min(),
+                series.max(),
+            )
+        return uniq_categories
+
+    def _infer_features_config_from_dataframe(
+        self,
+        data: pd.DataFrame,
+        default_embedding_size: int = 10,
+        custom_embedding_sizes: dict[str, int] | None = None,
+        embedded_features: Sequence[str] | None = None,
+    ) -> FeaturesConfig:
+        """Create feature config from pandas dataframe.
+
+        Args:
+            data: pandas dataframe to infrence features config
+            default_embedding_size: default features embedding size
+            custom_embedding_sizes: custom embeddings mapping {feature: feature: embedding_size}
+            embedded_features: features to embed
+
+        Returns:
+            Created features config
+        """
+        custom_embedding_sizes = custom_embedding_sizes or {}
+
+        features = []
+        for col in data.columns:
+            num_embed_params = {}
+            if col in embedded_features:
+                num_embed_params = {
+                    "needs_embed": True,
+                    "embedding_size": custom_embedding_sizes.get(col, default_embedding_size),
+                }
+
+            if isinstance(data[col].dtype, pd.CategoricalDtype):
+                uniq_categories = self._calculate_uniq_categories(data[col])
+                features.append(
+                    Feature(
+                        name=col,
+                        feature_type=FeatureType.CATEGORICAL,
+                        needs_embed=True,
+                        embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
+                        embedding_vocab_size=uniq_categories,
+                    )
+                )
+                continue
+
+            if is_numeric_dtype(data[col].dtype):
+                features.append(Feature(name=col, feature_type=FeatureType.NUMERICAL, **num_embed_params))
+                continue
+
+            list_value = data.at[0, col]
+            if not is_list_like(list_value):
+                raise RuntimeError(
+                    f"Feature `{col}` is not category, not numerical and not list-like, got {list_value}"
+                )
+
+            feature_size = data[col].apply(len).unique()
+            if len(feature_size) > 1:
+                raise RuntimeError(f"Got multiple sequence lengths for feature `{col}`")
+            feature_size = feature_size[0]
+
+            if is_float_dtype(np.concat(data[col].values)):
+                features.append(
+                    Feature(
+                        name=col,
+                        feature_type=FeatureType.NUMERICAL_SEQUENCE,
+                        feature_size=feature_size,
+                        **num_embed_params,
+                    )
+                )
+                continue
+
+            uniq_categories = self._calculate_uniq_categories(data[col], list_like=True)
+            features.append(
+                Feature(
+                    name=col,
+                    feature_type=FeatureType.CATEGORICAL_SEQUENCE,
+                    feature_size=feature_size,
+                    needs_embed=True,
+                    embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
+                    embedding_vocab_size=uniq_categories,
+                )
+            )
+
+        return FeaturesConfig(features=features)
+
     def _get_dataloader_from_dataframes(
         self,
-        config: TrainingConfig,
         features: pd.DataFrame,
         target: pd.Series | np.ndarray | None = None,
         shuffle: bool = False,
+        batch_size: int = 64,
+        num_workers: int = 12,
+        drop_last_batch: bool = False,
     ) -> DataLoader:
         """Create dataloaders from input pandas dataframes.
 
         Args:
-            config: config instance
             features: dataframe with input features
             target: dataframe with train target
             shuffle: shuffle elements flag
-
+            batch_size: size of dataloader batches
+            num_workers: number of dataloader workers
+            drop_last_batch: drop last incomplete batch
         Returns:
             Created dataloader
         """
@@ -125,14 +256,14 @@ class NNPandasModel(ABC, nn.Module):
             merged_df["target"] = target
             target_col = "target"
 
-        dataset = PandasDataset(merged_df, return_dicts=config.return_dict_batches, target_col=target_col)
+        dataset = PandasDataset(merged_df, return_dicts=True, target_col=target_col)
         return DataLoader(
             dataset,
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=config.num_workers,
+            num_workers=num_workers,
             pin_memory=True,
-            drop_last=config.drop_last_batch,
+            drop_last=drop_last_batch,
         )
 
     def _move_batch_to_device(
@@ -220,13 +351,13 @@ class NNPandasModel(ABC, nn.Module):
     def _run_inference_epoch(
         self,
         dataloader: DataLoader,
-        config: TrainingConfig,
+        device: torch.device | str,
     ) -> torch.Tensor:
         """Run single inference epoch.
 
         Args:
             dataloader: torch dataloader
-            config: config instance
+            device: working device
 
         Returns:
             Output tensors after model inference
@@ -237,7 +368,7 @@ class NNPandasModel(ABC, nn.Module):
 
         progress_bar = tqdm(dataloader, desc="Inference epoch")
         for batch in progress_bar:
-            batch = self._move_batch_to_device(batch, device=config.device)
+            batch = self._move_batch_to_device(batch, device=device)
             with torch.inference_mode():
                 step_output = self._run_model_step(batch, phase=ModelPhase.INFERENCE)
             batch_results.append(step_output)
@@ -248,9 +379,10 @@ class NNPandasModel(ABC, nn.Module):
         dataloader: DataLoader,
         epoch_num: int,
         optimizer: Optimizer,
-        config: TrainingConfig,
         phase: ModelPhase = ModelPhase.TRAIN,
         scheduler: LRScheduler | None = None,
+        device: torch.device | str = "cpu",
+        grad_clip_threshold: float | None = None,
     ) -> dict[str, Any]:
         """Run single epoch.
 
@@ -258,9 +390,10 @@ class NNPandasModel(ABC, nn.Module):
             dataloader: torch dataloader
             epoch_num: number of epoch
             optimizer: model optimizer
-            config: training config instance
+            device: working device
             phase: model phase
             scheduler: learning rate scheduler
+            grad_clip_threshold: value to clip gradients
 
         Returns:
             Average metrics after training epoch
@@ -276,7 +409,7 @@ class NNPandasModel(ABC, nn.Module):
 
         progress_bar = tqdm(dataloader, desc=f"{phase.value} epoch #{epoch_num}")
         for batch in progress_bar:
-            batch = self._move_batch_to_device(batch, device=config.device)
+            batch = self._move_batch_to_device(batch, device=device)
             steps_per_epoch += 1
 
             if phase == ModelPhase.TRAIN:
@@ -285,8 +418,8 @@ class NNPandasModel(ABC, nn.Module):
                 loss = step_output["loss"]
                 loss.backward()
 
-                if config.grad_clip_threshold:
-                    torch.nn.utils.clip_grad_norm_(self.parameters(), config.grad_clip_threshold)
+                if grad_clip_threshold:
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), grad_clip_threshold)
 
                 optimizer.step()
                 if scheduler is not None:
@@ -314,96 +447,141 @@ class NNPandasModel(ABC, nn.Module):
     def fit(
         self,
         features: pd.DataFrame,
-        config: TrainingConfig,
         target: pd.Series | np.ndarray = None,
-        optimizer: Optimizer | None = None,
-        scheduler: LRScheduler | None = None,
         val_features: pd.DataFrame | None = None,
         val_target: pd.Series | np.ndarray = None,
+        num_epochs: int = 10,
+        seed: int | None = None,
+        artifacts_path: str | None = None,
+        device: str | torch.device = "cpu",
+        batch_size: int = 64,
+        num_workers: int = 12,
+        drop_last_batch: bool = False,
+        grad_clip_threshold: float | None = None,
+        validate_every_n_epochs: int = 1,
+        eval_metric_name: str | None = None,
+        eval_mode: Literal["min", "max"] = "max",
+        patience: int | None = None,
+        default_embedding_size: int = 10,
+        custom_embedding_sizes: dict[str, int] | None = None,
+        embedded_features: Sequence[str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Train model using pandas dataframes.
 
         Args:
             features: features to train
             target: target to train
-            config: training config instance
-            optimizer: model optimizer, default is Adam
-            scheduler: model scheduler
             val_features: features for validation, if None dont validate
             val_target: target for validation
+            num_epochs: number of training epochs
+            seed: random seed
+            artifacts_path: path to save artifacts
+            device: working device
+            batch_size: size of dataloader batches
+            num_workers: number of dataloader workers
+            drop_last_batch: drop last incomplete batch
+            grad_clip_threshold: value to clip gradients
+            validate_every_n_epochs: evaulation frequency
+            eval_metric_name: metric name to evaluate
+            eval_mode: eval rule for metrics
+            patience: number of epochs to wait for metrics improvement, after that stop training
+            default_embedding_size: default features embedding size
+            custom_embedding_sizes: custom embeddings mapping {feature: feature: embedding_size}
+            embedded_features: features to embed
 
         Returns:
             Output metrics from train and validation steps
         """
-        seed_everything(config.seed)
-        LOGGER.info("Artifacts path is %s", pathlib.Path(config.artifacts_path).resolve())
-        if not os.path.isdir(config.artifacts_path):
-            LOGGER.info("Creating artifacts path")
-            os.makedirs(config.artifacts_path)
+        if self.infer_feature_config:
+            features_config = self._infer_features_config_from_dataframe(
+                data=features,
+                default_embedding_size=default_embedding_size,
+                custom_embedding_sizes=custom_embedding_sizes,
+                embedded_features=embedded_features,
+            )
+            self._init_modules(features_config=features_config)
 
-        self = self.to(config.device)
-        optimizer = optimizer or torch.optim.Adam(self.parameters())
+        eval_metric_name = eval_metric_name or "loss"
+        if seed:
+            seed_everything(seed)
+
+        best_model_path = None
+        if artifacts_path:
+            LOGGER.info("Artifacts path is %s", pathlib.Path(artifacts_path).resolve())
+            if not os.path.isdir(artifacts_path):
+                LOGGER.info("Creating artifacts path")
+                os.makedirs(artifacts_path)
+
+            best_model_path = str(pathlib.Path(artifacts_path) / "best_model.pt")
+            LOGGER.info("Best model path is %s", best_model_path)
+
+        self = self.to(device)
+        optimizer = self.optimizer or torch.optim.Adam(self.parameters())
 
         train_dataloader = self._get_dataloader_from_dataframes(
-            config=config,
             features=features,
             target=target,
             shuffle=True,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            drop_last_batch=drop_last_batch,
         )
 
         val_dataloader = None
         if val_features is not None:
             val_dataloader = self._get_dataloader_from_dataframes(
-                config=config,
                 features=val_features,
                 target=val_target,
                 shuffle=False,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                drop_last_batch=False,
             )
 
         LOGGER.info("Starting training process")
         train_output, val_output = None, None
         patience_epochs, best_eval_metric = 0, None
 
-        for epoch in range(config.num_epochs):
+        for epoch in range(num_epochs):
             train_output = self._run_epoch(
                 train_dataloader,
                 epoch_num=epoch,
                 phase=ModelPhase.TRAIN,
                 optimizer=optimizer,
-                scheduler=scheduler,
-                config=config,
+                scheduler=self.scheduler,
+                device=device,
+                grad_clip_threshold=grad_clip_threshold,
             )
 
             if (
                 val_dataloader is not None
-                and (not epoch % config.validate_every_n_epochs or epoch == config.num_epochs - 1)
+                and (not epoch % validate_every_n_epochs or epoch == num_epochs - 1)
             ):
                 val_output = self._run_epoch(
                     val_dataloader,
                     epoch_num=epoch,
                     phase=ModelPhase.VALIDATION,
-                    optimizer=optimizer,
-                    scheduler=scheduler,
-                    config=config,
+                    device=device,
                 )
 
-                current_eval_metric = val_output[config.eval_metric_name]
-                if self._check_metrics_improvement(current_eval_metric, best_eval_metric, eval_mode=config.eval_mode):
+                current_eval_metric = val_output[eval_metric_name]
+                if self._check_metrics_improvement(current_eval_metric, best_eval_metric, eval_mode=eval_mode):
                     patience_epochs = 0
                     best_eval_metric = current_eval_metric
 
-                    torch.save(self.state_dict(), config.best_model_path)
-                    LOGGER.info(
-                        "Best model with %s = %s was saved to %s",
-                        config.eval_metric_name,
-                        best_eval_metric,
-                        config.best_model_path,
-                    )
+                    if best_model_path:
+                        torch.save(self.state_dict(), best_model_path)
+                        LOGGER.info(
+                            "Best model with %s = %s was saved to %s",
+                            eval_metric_name,
+                            best_eval_metric,
+                            best_model_path,
+                        )
                     continue
 
                 patience_epochs += 1
-                if patience_epochs > config.patience:
-                    LOGGER.info("Metrics not increasing during %s epochs. Stop training", config.patience)
+                if patience and patience_epochs > patience:
+                    LOGGER.info("Metrics not increasing during %s epochs. Stop training", patience)
                     break
 
         return train_output, val_output
@@ -411,55 +589,66 @@ class NNPandasModel(ABC, nn.Module):
     def test(
         self,
         features: pd.DataFrame,
-        config: TrainingConfig,
         target: pd.Series | np.ndarray = None,
+        device: str | torch.device = "cpu",
+        batch_size: int = 64,
+        num_workers: int = 12,
     ) -> dict[str, Any]:
         """Run prediction on pandas dataframe.
 
         Args:
             features: features for test
-            config: config instance
             target: target to for test
+            device: working device
+            batch_size: size of dataloader batches
+            num_workers: number of dataloader workers
 
         Returns:
             Test metrics
         """
-        self = self.to(config.device)
+        self = self.to(device)
         dataloader = self._get_dataloader_from_dataframes(
-            config=config,
             features=features,
             target=target,
             shuffle=False,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            drop_last_batch=False,
         )
         test_output = self._run_epoch(
             dataloader,
             epoch_num=-1,
             phase=ModelPhase.TEST,
-            optimizer=None,
-            config=config,
+            device=device,
         )
         return test_output
 
     def predict(
         self,
         features: pd.DataFrame,
-        config: TrainingConfig,
+        device: str | torch.device = "cpu",
+        batch_size: int = 64,
+        num_workers: int = 12,
     ) -> np.ndarray:
         """Run prediction on pandas dataframe.
 
         Args:
             features: features to train
-            config: config instance
+            device: working device
+            batch_size: size of dataloader batches
+            num_workers: number of dataloader workers
 
         Returns:
             Predicted items
         """
-        self = self.to(config.device)
+        self = self.to(device)
         dataloader = self._get_dataloader_from_dataframes(
-            config=config,
             features=features,
             target=None,
             shuffle=False,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            drop_last_batch=False,
         )
-        inference_output = self._run_inference_epoch(dataloader, config=config)
+        inference_output = self._run_inference_epoch(dataloader, device=device)
         return inference_output.detach().cpu().numpy()

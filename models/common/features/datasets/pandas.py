@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 
@@ -44,7 +45,7 @@ class PandasDataset(Dataset):
         """
         row = self.dataframe.iloc[index]
         if self.return_dicts:
-            return row.to_dict()
+            return {k: v if not isinstance(v, list | tuple) else np.array(v) for k, v in row.to_dict().items()}
 
         if not self.target_col:
             return row.values
