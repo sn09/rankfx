@@ -48,6 +48,7 @@ extend-select = [
     "C",  # flake8-comprehensions
     "B",  # flake8-bugbear
 ]
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["common", "dcnv2"]
