@@ -20,6 +20,7 @@ from tqdm.auto import tqdm
 
 from common.features.config import Feature, FeaturesConfig, FeatureType
 from common.features.datasets import PandasDataset
+from common.utils.import_utils import import_module_by_path
 from common.utils.logging_utils import get_logger
 from common.utils.training_utils import seed_everything
 
@@ -39,20 +40,33 @@ class NNPandasModel(ABC, nn.Module):
     """Base model class."""
     def __init__(
         self,
-        optimizer: Optimizer | None = None,
-        scheduler: LRScheduler | None = None,
+        optimizer_cls: str | None = None,
+        optimizer_params: dict[str, Any] | None = None,
+        scheduler_cls: str | None = None,
+        scheduler_params: dict[str, Any] | None = None,
         infer_feature_config: bool = True,
     ):
         """Instantiate model class.
 
         Args:
-            optimizer: optimizer instance
-            scheduler: learning rate scheduler instance
+            optimizer_cls: optimizer import path
+            optimizer_params: optimizer parameters
+            scheduler_cls: scheduler import path
+            scheduler_params: scheduler parameters
             infer_feature_config: infer features config from input pandas dataframe
         """
         super().__init__()
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+
+        self.optimizer = None
+        if optimizer_cls:
+            optimizer_cls = import_module_by_path(optimizer_cls)
+            self.optimizer = optimizer_cls(self.parameters(), **(optimizer_params or {}))
+
+        self.scheduler = None
+        if scheduler_cls and self.optimizer is not None:
+            scheduler_cls = import_module_by_path(scheduler_cls)
+            self.scheduler = scheduler_cls(self.optimizer, **(scheduler_params or {}))
+
         self.infer_feature_config = infer_feature_config
 
     @abstractmethod

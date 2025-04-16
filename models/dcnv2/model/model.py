@@ -6,8 +6,6 @@ from typing import Any, Literal
 import torch
 from sklearn.metrics import log_loss, roc_auc_score
 from torch import nn
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
 
 from common.base.model import NNPandasModel
 from common.features.config import FeaturesConfig
@@ -20,10 +18,12 @@ class DCNv2(NNPandasModel):
     """DCNv2 implementation."""
     def __init__(
         self,
-        optimizer: Optimizer | None = None,
-        scheduler: LRScheduler | None = None,
         loss_fn: str = "torch.nn.BCEWithLogitsLoss",
         loss_params: dict[str, Any] | None = None,
+        optimizer_cls: str = "torch.optim.Adam",
+        optimizer_params: dict[str, Any] | None = None,
+        scheduler_cls: str | None = None,
+        scheduler_params: dict[str, Any] | None = None,
         model_structure: Literal["crossnet_only", "stacked", "parallel", "stacked_parallel"] = "stacked",
         use_low_rank_mixture: bool = True,
         cross_low_rank_dim: int = 32,
@@ -46,10 +46,12 @@ class DCNv2(NNPandasModel):
         Features are taken in the order, specified in features_config.features
 
         Args:
-            optimizer: optimizer instance
-            scheduler: learning rate scheduler instance
             loss_fn: loss function import path
             loss_params: model loss parameters
+            optimizer_cls: optimizer import path
+            optimizer_params: optimizer parameters
+            scheduler_cls: scheduler import path
+            scheduler_params: scheduler parameters
             model_structure: model structure type
             use_low_rank_mixture: use low rank projections inside the net
             cross_low_rank_dim: size of low rank cross net projections
@@ -67,7 +69,13 @@ class DCNv2(NNPandasModel):
             proj_output_embeddings: apply linear layer to concatted embeddings
             features_config: features config if known beforehand
         """
-        super().__init__(optimizer=optimizer, scheduler=scheduler, infer_feature_config=features_config is None)
+        super().__init__(
+            optimizer_cls=optimizer_cls,
+            optimizer_params=optimizer_params,
+            scheduler_cls=scheduler_cls,
+            scheduler_params=scheduler_params,
+            infer_feature_config=features_config is None,
+        )
 
         if model_structure not in [
             ModelStructure.CROSSNET_ONLY.value,
