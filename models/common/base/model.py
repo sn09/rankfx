@@ -164,8 +164,8 @@ class NNPandasModel(ABC, nn.Module):
             Number of unique categories
         """
         uniq_categories = series.nunique() if not list_like else series.explode().nunique()
-        min_value = series.values.as_ordeted().min() if category else series.min()
-        max_value = series.values.as_ordeted().max() if category else series.max()
+        min_value = series.values.as_ordered().min() if category else series.min()
+        max_value = series.values.as_ordered().max() if category else series.max()
         if min_value != 0 and max_value != uniq_categories - 1:
             LOGGER.warning(
                 "Number of unique `%s` values is %s, but feature is in interval [%s, %s]",
