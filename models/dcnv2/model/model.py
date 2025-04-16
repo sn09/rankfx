@@ -150,7 +150,11 @@ class DCNv2(NNPandasModel):
                 use_batch_norm=self.parallel_use_batch_norm,
             )
 
-        final_dim = self._get_backbone_output_dim(input_dim=input_dim)
+        final_dim = self._get_backbone_output_dim(
+            input_dim=input_dim,
+            parallel_hidden_dims=self.parallel_hidden_dims,
+            stacked_hidden_dims=self.stacked_hidden_dims,
+        )
         self.fc = nn.Linear(final_dim, self.output_dim)
 
     def _get_backbone_output_dim(

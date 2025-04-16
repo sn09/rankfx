@@ -159,13 +159,15 @@ class NNPandasModel(ABC, nn.Module):
             Number of unique categories
         """
         uniq_categories = series.nunique() if not list_like else series.explode().nunique()
-        if series.min() != 0 and series.max() != uniq_categories - 1:
+        min_value = series.values.as_ordeted().min() if isinstance(series, pd.Categorical) else series.min()
+        max_value = series.values.as_ordeted().max() if isinstance(series, pd.Categorical) else series.max()
+        if min_value != 0 and max_value != uniq_categories - 1:
             LOGGER.warning(
                 "Number of unique `%s` values is %s, but feature is in interval [%s, %s]",
                 series.name,
                 uniq_categories,
-                series.min(),
-                series.max(),
+                min_value,
+                max_value,
             )
         return uniq_categories
 
@@ -530,6 +532,7 @@ class NNPandasModel(ABC, nn.Module):
                 embedded_features=embedded_features,
             )
             self._init_modules(features_config=features_config)
+        LOGGER.info("Used features config: %s", features_config)
 
         optimizer, scheduler = self._init_optimizers(
             optimizer_cls=optimizer_cls,
