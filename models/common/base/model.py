@@ -402,7 +402,7 @@ class NNPandasModel(ABC, nn.Module):
         self,
         dataloader: DataLoader,
         epoch_num: int,
-        optimizer: Optimizer,
+        optimizer: Optimizer | None = None,
         phase: ModelPhase = ModelPhase.TRAIN,
         scheduler: LRScheduler | None = None,
         device: torch.device | str = "cpu",
