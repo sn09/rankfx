@@ -213,7 +213,7 @@ class NNPandasModel(ABC, nn.Module):
                         feature_type=FeatureType.CATEGORICAL,
                         needs_embed=True,
                         embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
-                        embedding_vocab_size=uniq_categories,
+                        embedding_vocab_size=uniq_categories + 1,
                     )
                 )
                 continue
@@ -252,7 +252,7 @@ class NNPandasModel(ABC, nn.Module):
                     feature_size=feature_size,
                     needs_embed=True,
                     embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
-                    embedding_vocab_size=uniq_categories,
+                    embedding_vocab_size=uniq_categories + 1,
                 )
             )
 
