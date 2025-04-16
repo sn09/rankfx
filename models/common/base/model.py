@@ -148,19 +148,24 @@ class NNPandasModel(ABC, nn.Module):
 
         return optimizer, scheduler
 
-    def _calculate_uniq_categories(self, series: pd.Series, list_like: bool = False) -> int:
+    def _calculate_uniq_categories(
+        self, series: pd.Series,
+        list_like: bool = False,
+        category: bool = False,
+    ) -> int:
         """Calculate number of unique categories in column.
 
         Args:
             series: pandas series
             list_like: is series consists of sequences
+            category: is series of type category
 
         Returns:
             Number of unique categories
         """
         uniq_categories = series.nunique() if not list_like else series.explode().nunique()
-        min_value = series.values.as_ordeted().min() if isinstance(series, pd.Categorical) else series.min()
-        max_value = series.values.as_ordeted().max() if isinstance(series, pd.Categorical) else series.max()
+        min_value = series.values.as_ordeted().min() if category else series.min()
+        max_value = series.values.as_ordeted().max() if category else series.max()
         if min_value != 0 and max_value != uniq_categories - 1:
             LOGGER.warning(
                 "Number of unique `%s` values is %s, but feature is in interval [%s, %s]",
@@ -201,7 +206,7 @@ class NNPandasModel(ABC, nn.Module):
                 }
 
             if isinstance(data[col].dtype, pd.CategoricalDtype):
-                uniq_categories = self._calculate_uniq_categories(data[col])
+                uniq_categories = self._calculate_uniq_categories(data[col], category=True)
                 features.append(
                     Feature(
                         name=col,
