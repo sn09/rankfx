@@ -38,35 +38,13 @@ class ModelPhase(enum.Enum):
 
 class NNPandasModel(ABC, nn.Module):
     """Base model class."""
-    def __init__(
-        self,
-        optimizer_cls: str | None = None,
-        optimizer_params: dict[str, Any] | None = None,
-        scheduler_cls: str | None = None,
-        scheduler_params: dict[str, Any] | None = None,
-        infer_feature_config: bool = True,
-    ):
+    def __init__(self, infer_feature_config: bool = True):
         """Instantiate model class.
 
         Args:
-            optimizer_cls: optimizer import path
-            optimizer_params: optimizer parameters
-            scheduler_cls: scheduler import path
-            scheduler_params: scheduler parameters
             infer_feature_config: infer features config from input pandas dataframe
         """
         super().__init__()
-
-        self.optimizer = None
-        if optimizer_cls:
-            optimizer_cls = import_module_by_path(optimizer_cls)
-            self.optimizer = optimizer_cls(self.parameters(), **(optimizer_params or {}))
-
-        self.scheduler = None
-        if scheduler_cls and self.optimizer is not None:
-            scheduler_cls = import_module_by_path(scheduler_cls)
-            self.scheduler = scheduler_cls(self.optimizer, **(scheduler_params or {}))
-
         self.infer_feature_config = infer_feature_config
 
     @abstractmethod
@@ -139,6 +117,36 @@ class NNPandasModel(ABC, nn.Module):
             features_config: features config
         """
         raise NotImplementedError
+
+    def _init_optimizers(
+        self,
+        optimizer_cls: str | None = None,
+        optimizer_params: dict[str, Any] | None = None,
+        scheduler_cls: str | None = None,
+        scheduler_params: dict[str, Any] | None = None,
+    ) -> tuple[Optimizer | None, LRScheduler | None]:
+        """Instatiate optimizer and scheduler objects if provided.
+
+        Args:
+            optimizer_cls: optimizer import path
+            optimizer_params: optimizer parameters
+            scheduler_cls: scheduler import path
+            scheduler_params: scheduler parameters
+
+        Returns:
+            Tuple of optimizer and scheduler
+        """
+        optimizer = None
+        if optimizer_cls:
+            optimizer_cls = import_module_by_path(optimizer_cls)
+            optimizer = optimizer_cls(self.parameters(), **(optimizer_params or {}))
+
+        scheduler = None
+        if scheduler_cls and optimizer is not None:
+            scheduler_cls = import_module_by_path(scheduler_cls)
+            scheduler = scheduler_cls(optimizer, **(scheduler_params or {}))
+
+        return optimizer, scheduler
 
     def _calculate_uniq_categories(self, series: pd.Series, list_like: bool = False) -> int:
         """Calculate number of unique categories in column.
@@ -464,6 +472,10 @@ class NNPandasModel(ABC, nn.Module):
         target: pd.Series | np.ndarray = None,
         val_features: pd.DataFrame | None = None,
         val_target: pd.Series | np.ndarray = None,
+        optimizer_cls: str | None = None,
+        optimizer_params: dict[str, Any] | None = None,
+        scheduler_cls: str | None = None,
+        scheduler_params: dict[str, Any] | None = None,
         num_epochs: int = 10,
         seed: int | None = None,
         artifacts_path: str | None = None,
@@ -487,6 +499,10 @@ class NNPandasModel(ABC, nn.Module):
             target: target to train
             val_features: features for validation, if None dont validate
             val_target: target for validation
+            optimizer_cls: optimizer import path
+            optimizer_params: optimizer parameters
+            scheduler_cls: scheduler import path
+            scheduler_params: scheduler parameters
             num_epochs: number of training epochs
             seed: random seed
             artifacts_path: path to save artifacts
@@ -515,6 +531,13 @@ class NNPandasModel(ABC, nn.Module):
             )
             self._init_modules(features_config=features_config)
 
+        optimizer, scheduler = self._init_optimizers(
+            optimizer_cls=optimizer_cls,
+            optimizer_params=optimizer_params,
+            scheduler_cls=scheduler_cls,
+            scheduler_params=scheduler_params,
+        )
+
         eval_metric_name = eval_metric_name or "loss"
         if seed:
             seed_everything(seed)
@@ -530,7 +553,7 @@ class NNPandasModel(ABC, nn.Module):
             LOGGER.info("Best model path is %s", best_model_path)
 
         self = self.to(device)
-        optimizer = self.optimizer or torch.optim.Adam(self.parameters())
+        optimizer = optimizer or torch.optim.Adam(self.parameters())
 
         train_dataloader = self._get_dataloader_from_dataframes(
             features=features,
@@ -562,7 +585,7 @@ class NNPandasModel(ABC, nn.Module):
                 epoch_num=epoch,
                 phase=ModelPhase.TRAIN,
                 optimizer=optimizer,
-                scheduler=self.scheduler,
+                scheduler=scheduler,
                 device=device,
                 grad_clip_threshold=grad_clip_threshold,
             )
