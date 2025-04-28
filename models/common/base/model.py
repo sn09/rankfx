@@ -534,7 +534,7 @@ class NNPandasModel(ABC, nn.Module):
                 data=features,
                 default_embedding_size=default_embedding_size,
                 custom_embedding_sizes=custom_embedding_sizes,
-                embedded_features=embedded_features,
+                embedded_features=embedded_features or [],
             )
             self._init_modules(features_config=features_config)
         LOGGER.info("Used features config: %s", features_config)
