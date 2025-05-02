@@ -11,7 +11,7 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 import torch
-from pandas.api.types import is_float_dtype, is_list_like, is_numeric_dtype
+from pandas.api.types import is_list_like, is_numeric_dtype
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -38,14 +38,19 @@ class ModelPhase(enum.Enum):
 
 class NNPandasModel(ABC, nn.Module):
     """Base model class."""
-    def __init__(self, infer_feature_config: bool = True):
+    def __init__(self, infer_feature_config: bool = True, oov_idx: int = 0):
         """Instantiate model class.
 
         Args:
             infer_feature_config: infer features config from input pandas dataframe
+            oov_idx: index to use as OOV for all categorical features embeddings
         """
         super().__init__()
         self.infer_feature_config = infer_feature_config
+        self.oov_idx = oov_idx
+
+        # categorical features mappings
+        self._feature_mappings: dict[str, dict[Any, int]] | None = None
 
     @abstractmethod
     def forward(self, input_: dict[str, torch.Tensor] | torch.Tensor) -> torch.Tensor:
@@ -148,34 +153,6 @@ class NNPandasModel(ABC, nn.Module):
 
         return optimizer, scheduler
 
-    def _calculate_uniq_categories(
-        self, series: pd.Series,
-        list_like: bool = False,
-        category: bool = False,
-    ) -> int:
-        """Calculate number of unique categories in column.
-
-        Args:
-            series: pandas series
-            list_like: is series consists of sequences
-            category: is series of type category
-
-        Returns:
-            Number of unique categories
-        """
-        uniq_categories = series.nunique() if not list_like else series.explode().nunique()
-        min_value = series.values.as_ordered().min() if category else series.min()
-        max_value = series.values.as_ordered().max() if category else series.max()
-        if min_value != 0 and max_value != uniq_categories - 1:
-            LOGGER.warning(
-                "Number of unique `%s` values is %s, but feature is in interval [%s, %s]",
-                series.name,
-                uniq_categories,
-                min_value,
-                max_value,
-            )
-        return uniq_categories
-
     def _infer_features_config_from_dataframe(
         self,
         data: pd.DataFrame,
@@ -194,8 +171,10 @@ class NNPandasModel(ABC, nn.Module):
         Returns:
             Created features config
         """
-        custom_embedding_sizes = custom_embedding_sizes or {}
+        if not len(data):
+            raise RuntimeError("Got empty dataframe for inferencing config")
 
+        custom_embedding_sizes = custom_embedding_sizes or {}
         features = []
         for col in data.columns:
             num_embed_params = {}
@@ -205,27 +184,28 @@ class NNPandasModel(ABC, nn.Module):
                     "embedding_size": custom_embedding_sizes.get(col, default_embedding_size),
                 }
 
-            if isinstance(data[col].dtype, pd.CategoricalDtype):
-                uniq_categories = self._calculate_uniq_categories(data[col], category=True)
+            if is_numeric_dtype(data[col].dtype):
+                features.append(Feature(name=col, feature_type=FeatureType.NUMERICAL, **num_embed_params))
+                continue
+
+            col_value = data.at[0, col]
+            if isinstance(data[col].dtype, pd.CategoricalDtype) or isinstance(col_value, str):
+                # saving one index for oov values
+                vocab_size = data[col].nunique() + 1
                 features.append(
                     Feature(
                         name=col,
                         feature_type=FeatureType.CATEGORICAL,
                         needs_embed=True,
                         embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
-                        embedding_vocab_size=uniq_categories + 1,
+                        embedding_vocab_size=vocab_size,
                     )
                 )
                 continue
 
-            if is_numeric_dtype(data[col].dtype):
-                features.append(Feature(name=col, feature_type=FeatureType.NUMERICAL, **num_embed_params))
-                continue
-
-            list_value = data.at[0, col]
-            if not is_list_like(list_value):
+            if not is_list_like(col_value):
                 raise RuntimeError(
-                    f"Feature `{col}` is not category, not numerical and not list-like, got {list_value}"
+                    f"Feature `{col}` is not category, not numerical and not list-like, got {col_value}"
                 )
 
             feature_size = data[col].apply(len).unique()
@@ -233,7 +213,7 @@ class NNPandasModel(ABC, nn.Module):
                 raise RuntimeError(f"Got multiple sequence lengths for feature `{col}`")
             feature_size = feature_size[0]
 
-            if is_float_dtype(np.concat(data[col].values)):
+            if is_numeric_dtype(np.concat(data[col].values)):
                 features.append(
                     Feature(
                         name=col,
@@ -244,7 +224,8 @@ class NNPandasModel(ABC, nn.Module):
                 )
                 continue
 
-            uniq_categories = self._calculate_uniq_categories(data[col], list_like=True)
+            # saving one index for oov values
+            vocab_size = data[col].explode().nunique() + 1
             features.append(
                 Feature(
                     name=col,
@@ -252,11 +233,66 @@ class NNPandasModel(ABC, nn.Module):
                     feature_size=feature_size,
                     needs_embed=True,
                     embedding_size=custom_embedding_sizes.get(col, default_embedding_size),
-                    embedding_vocab_size=uniq_categories + 1,
+                    embedding_vocab_size=vocab_size,
                 )
             )
 
         return FeaturesConfig(features=features)
+
+    def _build_features_mappings(self, data: pd.DataFrame) -> dict[str, dict[Any, int]]:
+        """Build categorical features mappings.
+
+        Args:
+            data: dataframe to build mappings
+
+        Returns:
+            Built mappings
+        """
+        if not len(data):
+            raise RuntimeError("Got empty dataframe for building categorical mappings")
+
+        features_mappings = {}
+        for col in data.columns:
+            col_value = data.at[0, col]
+            feature_values = data[col].explode() if is_list_like(col_value) else data[col]
+
+            if is_numeric_dtype(feature_values.dtype):
+                continue
+
+            if not (isinstance(feature_values.dtype, pd.CategoricalDtype) or isinstance(col_value, str)):
+                raise RuntimeError(
+                    f"Feature `{col}` is not category, not numerical and not string, got {col_value}"
+                )
+
+            LOGGER.info("Building mapping for feature %s", col)
+            uniq_values = feature_values.unique().tolist()
+            indexes = list(range(len(uniq_values) + 1))
+
+            if self.oov_idx not in indexes:
+                raise RuntimeError("OOV idx is not in interval for feature %s", col)
+
+            indexes.pop(self.oov_idx)
+            features_mappings[col] = dict(zip(uniq_values, indexes, strict=False))
+
+        return features_mappings
+
+    def _encode_categorical_features(self, features: pd.DataFrame) -> pd.DataFrame:
+        """Encode categorical features using vocabulary.
+
+        Args:
+            features: dataframe with input features
+        Returns:
+            Encoded dataframe
+        """
+        if self._feature_mappings is None:
+            raise RuntimeError("Trying to encode features, but features mapping are not built")
+
+        for col, mapping in self._feature_mappings.items():
+            if col in features:
+                LOGGER.info("Encoding feature %s", col)
+                features[col] = features[col].map(mapping).fillna(self.oov_idx).astype(int)
+
+        return features
 
     def _get_dataloader_from_dataframes(
         self,
@@ -266,6 +302,7 @@ class NNPandasModel(ABC, nn.Module):
         batch_size: int = 64,
         num_workers: int = 12,
         drop_last_batch: bool = False,
+        masking_proba: float | None = None,
     ) -> DataLoader:
         """Create dataloaders from input pandas dataframes.
 
@@ -276,16 +313,31 @@ class NNPandasModel(ABC, nn.Module):
             batch_size: size of dataloader batches
             num_workers: number of dataloader workers
             drop_last_batch: drop last incomplete batch
+            masking_proba: probabilty to mask category values with oov
         Returns:
             Created dataloader
         """
-        merged_df = features.copy(deep=True)
+        features = features.copy(deep=True)
+        columns_to_mask = None
+
+        if self._feature_mappings is not None:
+            features = self._encode_categorical_features(features=features)
+            columns_to_mask = list(self._feature_mappings.keys())
+
         target_col = None
         if target is not None:
-            merged_df["target"] = target
+            features["target"] = target
             target_col = "target"
 
-        dataset = PandasDataset(merged_df, return_dicts=True, target_col=target_col)
+        dataset = PandasDataset(
+            features,
+            return_dicts=True,
+            target_col=target_col,
+            masking_value=self.oov_idx,
+            masking_proba=masking_proba,
+            columns_to_mask=columns_to_mask,
+        )
+
         return DataLoader(
             dataset,
             batch_size=batch_size,
@@ -473,6 +525,22 @@ class NNPandasModel(ABC, nn.Module):
         self._clear_resources()
         return epoch_metrics
 
+    def get_feature_mapping(self) -> dict[str, dict[Any, int]] | None:
+        """Get categorical features mappings.
+
+        Returns:
+            Categorical features mappings
+        """
+        return self._feature_mappings
+
+    def set_feature_mapping(self, mappings: dict[str, dict[Any, int]] | None) -> None:
+        """Set categorical features mappings.
+
+        Args:
+            mappings: categorical features mappings to set
+        """
+        self._feature_mappings = mappings
+
     def fit(
         self,
         features: pd.DataFrame,
@@ -498,6 +566,8 @@ class NNPandasModel(ABC, nn.Module):
         default_embedding_size: int = 10,
         custom_embedding_sizes: dict[str, int] | None = None,
         embedded_features: Sequence[str] | None = None,
+        features_mappings: dict[str, dict[Any, int]] | None = None,
+        oov_masking_proba: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """Train model using pandas dataframes.
 
@@ -525,6 +595,8 @@ class NNPandasModel(ABC, nn.Module):
             default_embedding_size: default features embedding size
             custom_embedding_sizes: custom embeddings mapping {feature: feature: embedding_size}
             embedded_features: features to embed
+            features_mappings: categorical features mappings to use, if None will be built from train dataframe
+            oov_masking_proba: probability to mask categorical features with oov_idx
 
         Returns:
             Output metrics from train and validation steps
@@ -563,6 +635,10 @@ class NNPandasModel(ABC, nn.Module):
         self = self.to(device)
         optimizer = optimizer or torch.optim.Adam(self.parameters())
 
+        LOGGER.info("Building features mappings")
+        self._feature_mappings = features_mappings or self._build_features_mappings(features=features)
+
+        LOGGER.info("Building train dataloader")
         train_dataloader = self._get_dataloader_from_dataframes(
             features=features,
             target=target,
@@ -570,10 +646,12 @@ class NNPandasModel(ABC, nn.Module):
             batch_size=batch_size,
             num_workers=num_workers,
             drop_last_batch=drop_last_batch,
+            masking_proba=oov_masking_proba,
         )
 
         val_dataloader = None
         if val_features is not None:
+            LOGGER.info("Building validation dataloader")
             val_dataloader = self._get_dataloader_from_dataframes(
                 features=val_features,
                 target=val_target,
@@ -652,6 +730,7 @@ class NNPandasModel(ABC, nn.Module):
             Test metrics
         """
         self = self.to(device)
+        LOGGER.info("Building test dataloader")
         dataloader = self._get_dataloader_from_dataframes(
             features=features,
             target=target,
@@ -687,6 +766,7 @@ class NNPandasModel(ABC, nn.Module):
             Predicted items
         """
         self = self.to(device)
+        LOGGER.info("Building inference dataloader")
         dataloader = self._get_dataloader_from_dataframes(
             features=features,
             target=None,

@@ -14,6 +14,9 @@ class PandasDataset(Dataset):
         dataframe: pd.DataFrame,
         return_dicts: bool = False,
         target_col: str | None = None,
+        mask_value: int | None = None,
+        masking_proba: float | None = None,
+        columns_to_mask: list[str] | None = None,
     ):
         """Instantiate dataset.
 
@@ -21,10 +24,16 @@ class PandasDataset(Dataset):
             dataframe: input dataframe to wrap as toch dataset
             return_dicts: flag to return dict or tensor of values
             target_col: target column name
+            mask_value: value to mask category columns
+            masking_proba: probabilty to mask category values mask value
+            columns_to_mask: columns to apply masking
         """
         self.dataframe = dataframe
         self.return_dicts = return_dicts
         self.target_col = target_col
+        self.mask_value = mask_value
+        self.masking_proba = masking_proba
+        self.columns_to_mask = columns_to_mask or []
 
     def __len__(self) -> int:
         """Get dataset length.
@@ -44,6 +53,13 @@ class PandasDataset(Dataset):
             Dataset element under specified index
         """
         row = self.dataframe.iloc[index]
+
+        # apply masking
+        if self.mask_value is not None and self.masking_proba is not None:
+            for col in self.columns_to_mask:
+                if np.random.uniform() < self.masking_proba:
+                    row[col] = self.mask_value
+
         if self.return_dicts:
             return {k: v if not isinstance(v, list | tuple) else np.array(v) for k, v in row.to_dict().items()}
 

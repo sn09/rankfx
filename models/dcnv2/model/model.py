@@ -36,6 +36,7 @@ class DCNv2(NNPandasModel):
         output_dim: int = 1,
         proj_output_embeddings: bool = False,
         features_config: FeaturesConfig | None = None,
+        oov_idx: int = 0,
     ):
         """Instantiate DCNv2 module.
 
@@ -60,8 +61,9 @@ class DCNv2(NNPandasModel):
             output_dim: net output dimensions
             proj_output_embeddings: apply linear layer to concatted embeddings
             features_config: features config if known beforehand
+            oov_idx: index to use as OOV for all categorical features embeddings
         """
-        super().__init__(infer_feature_config=features_config is None)
+        super().__init__(infer_feature_config=features_config is None, oov_idx=oov_idx)
 
         if model_structure not in [
             ModelStructure.CROSSNET_ONLY.value,
