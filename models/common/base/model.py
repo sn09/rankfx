@@ -290,7 +290,7 @@ class NNPandasModel(ABC, nn.Module):
         for col, mapping in self._feature_mappings.items():
             if col in features:
                 LOGGER.info("Encoding feature %s", col)
-                features[col] = features[col].map(mapping).fillna(self.oov_idx).astype(int)
+                features[col] = features[col].map(mapping).astype(int).fillna(self.oov_idx)
 
         return features
 
