@@ -636,7 +636,7 @@ class NNPandasModel(ABC, nn.Module):
         optimizer = optimizer or torch.optim.Adam(self.parameters())
 
         LOGGER.info("Building features mappings")
-        self._feature_mappings = features_mappings or self._build_features_mappings(features=features)
+        self._feature_mappings = features_mappings or self._build_features_mappings(data=features)
 
         LOGGER.info("Building train dataloader")
         train_dataloader = self._get_dataloader_from_dataframes(
