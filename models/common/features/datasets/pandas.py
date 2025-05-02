@@ -58,7 +58,8 @@ class PandasDataset(Dataset):
         if self.mask_value is not None and self.masking_proba is not None:
             for col in self.columns_to_mask:
                 if np.random.uniform() < self.masking_proba:
-                    row[col] = self.mask_value
+                    # to avoid SettingWithCopyWarning
+                    row = row.where(row.index != col, self.mask_value)
 
         if self.return_dicts:
             return {k: v if not isinstance(v, list | tuple) else np.array(v) for k, v in row.to_dict().items()}
