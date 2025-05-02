@@ -333,7 +333,7 @@ class NNPandasModel(ABC, nn.Module):
             features,
             return_dicts=True,
             target_col=target_col,
-            masking_value=self.oov_idx,
+            mask_value=self.oov_idx,
             masking_proba=masking_proba,
             columns_to_mask=columns_to_mask,
         )
