@@ -760,6 +760,9 @@ class NNPandasModel(ABC, nn.Module):
                     LOGGER.info("Metrics not increasing during %s epochs. Stop training", patience)
                     break
 
+        LOGGER.info("Loading best model from %s", best_model_path)
+        self.load_state_dict(best_model_path, strict=True)
+
         return train_output, val_output
 
     def test(
