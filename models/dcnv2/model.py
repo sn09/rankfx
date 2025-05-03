@@ -37,8 +37,6 @@ class DCNv2(NNPandasModel):
         proj_output_embeddings: bool = False,
         features_config: FeaturesConfig | None = None,
         oov_idx: int = 0,
-        l2_net_reg: float = 0.,
-        l2_embedding_reg: float = 0.,
     ):
         """Instantiate DCNv2 module.
 
@@ -64,14 +62,10 @@ class DCNv2(NNPandasModel):
             proj_output_embeddings: apply linear layer to concatted embeddings
             features_config: features config if known beforehand
             oov_idx: index to use as OOV for all categorical features embeddings
-            l2_net_reg: regularizer term for net parameters
-            l2_embedding_reg: regularizer term for embeddings parameters
         """
         super().__init__(
             infer_feature_config=features_config is None,
             oov_idx=oov_idx,
-            l2_net_reg=l2_net_reg,
-            l2_embedding_reg=l2_embedding_reg,
         )
 
         if model_structure not in [
