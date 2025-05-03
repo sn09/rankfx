@@ -20,6 +20,7 @@ from tqdm.auto import tqdm
 
 from common.features.config import Feature, FeaturesConfig, FeatureType
 from common.features.datasets import PandasDataset
+from common.modules import EmbeddingLayer
 from common.utils.import_utils import import_module_by_path
 from common.utils.logging_utils import get_logger
 from common.utils.training_utils import seed_everything
@@ -38,16 +39,26 @@ class ModelPhase(enum.Enum):
 
 class NNPandasModel(ABC, nn.Module):
     """Base model class."""
-    def __init__(self, infer_feature_config: bool = True, oov_idx: int = 0):
+    def __init__(
+        self,
+        infer_feature_config: bool = True,
+        oov_idx: int = 0,
+        l2_net_reg: float = 0.,
+        l2_embedding_reg: float = 0.,
+    ):
         """Instantiate model class.
 
         Args:
             infer_feature_config: infer features config from input pandas dataframe
             oov_idx: index to use as OOV for all categorical features embeddings
+            l2_net_reg: regularizer term for net parameters
+            l2_embedding_reg: regularizer term for embeddings parameters
         """
         super().__init__()
         self.infer_feature_config = infer_feature_config
         self.oov_idx = oov_idx
+        self.l2_net_reg = l2_net_reg
+        self.l2_embedding_reg = l2_embedding_reg
 
         # categorical features mappings
         self._feature_mappings: dict[str, dict[Any, int]] | None = None
@@ -406,6 +417,28 @@ class NNPandasModel(ABC, nn.Module):
 
         raise RuntimeError(f"Got unknown eval_mode {eval_mode}, should be on of (`min`, `max`)")
 
+    def _calculate_l2_term(self):
+        """Calculate L2 regularization term."""
+        if not (self.l2_embedding_reg or self.l2_net_reg):
+            return 0.
+
+        reg_term, emb_params = 0, set()
+        for module_name, module in self.named_modules():
+            if not isinstance(module, EmbeddingLayer):
+                continue
+
+            for p_name, param in module.named_parameters():
+                if param.requires_grad:
+                    emb_params.add(".".join([module_name, p_name]))
+                    reg_term += 0.5 * self.l2_embedding_reg * torch.norm(param, 2) ** 2
+
+        for p_name, param in self.named_parameters():
+            if param.requires_grad:
+                if p_name not in emb_params:
+                    reg_term += 0.5 * self.l2_net_reg * torch.norm(param, 2) ** 2
+
+        return reg_term
+
     def _run_model_step(
         self,
         batch: dict[str, torch.Tensor] | torch.Tensor,
@@ -498,7 +531,7 @@ class NNPandasModel(ABC, nn.Module):
             if phase == ModelPhase.TRAIN:
                 optimizer.zero_grad()
                 step_output = self._run_model_step(batch, phase=phase)
-                loss = step_output["loss"]
+                loss = step_output["loss"] + self._calculate_l2_term()
                 loss.backward()
 
                 if grad_clip_threshold:
