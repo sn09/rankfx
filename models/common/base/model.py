@@ -761,7 +761,7 @@ class NNPandasModel(ABC, nn.Module):
                     break
 
         LOGGER.info("Loading best model from %s", best_model_path)
-        self.load_state_dict(best_model_path, strict=True)
+        self.load_state_dict(torch.load(best_model_path, weights_only=True), strict=True)
 
         return train_output, val_output
 
