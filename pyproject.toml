@@ -64,4 +64,4 @@ asyncio_mode = "auto"
 
 [tool.ruff.lint.mccabe]
 # Flag errors (`C901`) whenever the complexity level exceeds 11.
-max-complexity = 11
+max-complexity = 12

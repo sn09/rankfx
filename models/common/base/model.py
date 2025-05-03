@@ -14,7 +14,7 @@ import torch
 from pandas.api.types import is_list_like, is_numeric_dtype
 from torch import nn
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -547,7 +547,7 @@ class NNPandasModel(ABC, nn.Module):
                     torch.nn.utils.clip_grad_norm_(self.parameters(), grad_clip_threshold)
 
                 optimizer.step()
-                if scheduler is not None:
+                if scheduler is not None and not isinstance(scheduler, ReduceLROnPlateau):
                     scheduler.step()
             else:
                 with torch.inference_mode():
@@ -751,6 +751,9 @@ class NNPandasModel(ABC, nn.Module):
                             best_model_path,
                         )
                     continue
+
+                if isinstance(scheduler, ReduceLROnPlateau):
+                    scheduler.step(current_eval_metric)
 
                 patience_epochs += 1
                 if patience and patience_epochs > patience:
