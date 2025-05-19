@@ -3,8 +3,8 @@
 import torch
 from torch import nn
 
-from common.features.config import FeaturesConfig
-from common.features.types import FeatureType
+from models.common.features.config import FeaturesConfig
+from models.common.features.types import FeatureType
 
 
 class EmbeddingLayer(nn.Module):

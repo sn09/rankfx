@@ -7,10 +7,10 @@ import torch
 from sklearn.metrics import log_loss, roc_auc_score
 from torch import nn
 
-from common.base.model import NNPandasModel
-from common.features.config import FeaturesConfig
-from common.modules import EmbeddingLayer, FieldGate, FinalBlock
-from common.utils.import_utils import import_module_by_path
+from models.common.base.model import NNPandasModel
+from models.common.features.config import FeaturesConfig
+from models.common.modules import EmbeddingLayer, FieldGate, FinalBlock
+from models.common.utils.import_utils import import_module_by_path
 
 
 class FinalNet(NNPandasModel):

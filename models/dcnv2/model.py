@@ -7,11 +7,11 @@ import torch
 from sklearn.metrics import log_loss, roc_auc_score
 from torch import nn
 
-from common.base.model import NNPandasModel
-from common.features.config import FeaturesConfig
-from common.modules import CrossNetMix, CrossNetV2, EmbeddingLayer, MLPBlock
-from common.utils.import_utils import import_module_by_path
-from dcnv2.config.model_config import ModelStructure
+from models.common.base.model import NNPandasModel
+from models.common.features.config import FeaturesConfig
+from models.common.modules import CrossNetMix, CrossNetV2, EmbeddingLayer, MLPBlock
+from models.common.utils.import_utils import import_module_by_path
+from models.dcnv2.config.model_config import ModelStructure
 
 
 class DCNv2(NNPandasModel):
