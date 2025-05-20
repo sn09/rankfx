@@ -17,7 +17,7 @@ setup(
   description="Python package for working with NN models",
   long_description=readme(),
   long_description_content_type="text/markdown",
-  url="https://github.com/sn09/ranking",
+  url="https://github.com/sn09/rankfx",
   packages=["rankfx"],
   install_requires=[
     "torch>=2.2.1",
