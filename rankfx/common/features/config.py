@@ -8,8 +8,8 @@ from dataclasses import field
 from pydantic import model_validator
 from pydantic.dataclasses import dataclass
 
-from models.common.base.config.base_config import BaseConfig
-from models.common.features.types import FeatureType
+from rankfx.common.base.config.base_config import BaseConfig
+from rankfx.common.features.types import FeatureType
 
 
 @dataclass

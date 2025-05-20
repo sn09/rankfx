@@ -8,7 +8,7 @@ from typing import Any
 from pydantic.dataclasses import dataclass
 from torch import nn
 
-from models.common.base.config.base_config import BaseConfig
+from rankfx.common.base.config.base_config import BaseConfig
 
 
 @enum.unique

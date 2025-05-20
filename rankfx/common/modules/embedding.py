@@ -3,8 +3,8 @@
 import torch
 from torch import nn
 
-from models.common.features.config import FeaturesConfig
-from models.common.features.types import FeatureType
+from rankfx.common.features.config import FeaturesConfig
+from rankfx.common.features.types import FeatureType
 
 
 class EmbeddingLayer(nn.Module):

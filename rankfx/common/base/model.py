@@ -18,12 +18,12 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from models.common.features.config import Feature, FeaturesConfig, FeatureType
-from models.common.features.datasets import PandasDataset
-from models.common.modules import EmbeddingLayer
-from models.common.utils.import_utils import import_module_by_path
-from models.common.utils.logging_utils import get_logger
-from models.common.utils.training_utils import seed_everything
+from rankfx.common.features.config import Feature, FeaturesConfig, FeatureType
+from rankfx.common.features.datasets import PandasDataset
+from rankfx.common.modules import EmbeddingLayer
+from rankfx.common.utils.import_utils import import_module_by_path
+from rankfx.common.utils.logging_utils import get_logger
+from rankfx.common.utils.training_utils import seed_everything
 
 LOGGER = get_logger(__name__)
 
