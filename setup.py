@@ -11,7 +11,7 @@ def readme():
 
 setup(
   name="rankfx",
-  version="0.1.0",
+  version="1.0.0",
   author="saraevn",
   author_email="saraevnik0909@gmail.com",
   description="Python package for working with NN models",
